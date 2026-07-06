@@ -1,0 +1,19 @@
+{
+  "name": "Sun Warrior Fitness",
+  "short_name": "Sun Warrior",
+  "description": "Sun Warrior Fitness coaching app for nutrition, workouts, progress, and check-ins.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/sun-warrior-logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
