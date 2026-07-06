@@ -6,6 +6,7 @@ export default function Login() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installMessage, setInstallMessage] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstallSupported, setIsInstallSupported] = useState(false);
 
   useEffect(() => {
     const isStandalone =
@@ -24,14 +25,18 @@ export default function Login() {
     function handleBeforeInstallPrompt(event) {
       event.preventDefault();
       setInstallPrompt(event);
+      setIsInstallSupported(true);
       setInstallMessage("");
     }
 
     function handleAppInstalled() {
       setInstallPrompt(null);
+      setIsInstallSupported(false);
       setIsInstalled(true);
-      setInstallMessage("Sun Warrior Fitness is installed.");
+      setInstallMessage("");
     }
+
+    setIsInstallSupported(Boolean(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone || window.deferredPrompt));
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
@@ -51,25 +56,38 @@ export default function Login() {
     }
 
     if (!installPrompt) {
-      setInstallMessage("Open your browser menu and choose Install app or Add to Home Screen.");
+      if (window.navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
+        setInstallMessage("On iPhone or iPad, use Share > Add to Home Screen to install this app.");
+      } else if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) {
+        setInstallMessage("Sun Warrior Fitness is already installed.");
+      } else {
+        setInstallMessage("Your browser is not offering an install prompt right now. Try using the browser menu to install this app.");
+      }
       return;
     }
 
-    installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    setInstallPrompt(null);
-    setInstallMessage(
-      choice.outcome === "accepted"
-        ? "Sun Warrior Fitness is installing."
-        : "You can install Sun Warrior Fitness anytime from this button."
-    );
+    try {
+      installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      setInstallPrompt(null);
+      setInstallMessage(
+        choice.outcome === "accepted"
+          ? "Sun Warrior Fitness is installing."
+          : "Installation was cancelled. You can try again anytime."
+      );
+    } catch (error) {
+      console.error("Install prompt failed", error);
+      setInstallMessage("The installation prompt could not be opened. Please try again from your browser menu.");
+    }
   }
 
   return (
     <main className="login-page">
-      <button className="install-button login-install-button" onClick={installApp}>
-        {isInstalled ? "App Installed" : "Install App"}
-      </button>
+      {!isInstalled && (
+        <button className="install-button login-install-button" onClick={installApp}>
+          {isInstallSupported ? "Install App" : "Install App"}
+        </button>
+      )}
       <section className="login-card">
         <div className="brand large">
           <img className="brand-mark login-logo" src="/sun-warrior-logo.png" alt="Sun Warrior Fitness logo" />
@@ -93,15 +111,6 @@ export default function Login() {
           </button>
         </div>
         {installMessage && <p className="install-message">{installMessage}</p>}
-
-        <div className="feature-grid">
-          <span>AI compliance score</span>
-          <span>Macro tracking</span>
-          <span>Coach messaging</span>
-          <span>Progress charts</span>
-          <span>Weekly check-ins</span>
-          <span>Workout logs</span>
-        </div>
       </section>
     </main>
   );
