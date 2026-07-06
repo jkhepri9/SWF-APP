@@ -13,6 +13,14 @@ export default function Login() {
 
     setIsInstalled(Boolean(isStandalone));
 
+    const root = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = root.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+
+    root.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+
     function handleBeforeInstallPrompt(event) {
       event.preventDefault();
       setInstallPrompt(event);
@@ -31,6 +39,8 @@ export default function Login() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
+      root.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
     };
   }, []);
 

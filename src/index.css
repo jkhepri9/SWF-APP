@@ -118,9 +118,9 @@ label {
 }
 
 .login-logo {
-  width: min(340px, 82vw);
-  height: min(340px, 82vw);
-  border-radius: 36px;
+  width: min(220px, 42vw);
+  height: min(220px, 42vw);
+  border-radius: 28px;
 }
 
 .brand h1 {
@@ -987,15 +987,19 @@ label {
 }
 
 .login-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
+  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   position: relative;
+  overflow: hidden;
 }
 
 .login-card {
   width: min(1080px, 100%);
+  max-height: calc(100dvh - 48px);
   border: 1px solid var(--border);
   border-radius: 36px;
   padding: clamp(24px, 5vw, 54px);
@@ -1003,12 +1007,14 @@ label {
     radial-gradient(circle at top right, rgba(212, 175, 55, 0.16), transparent 36%),
     var(--panel);
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .hero-copy {
   text-align: center;
   display: grid;
   justify-items: center;
+  gap: 10px;
 }
 
 .login-actions {
@@ -1161,12 +1167,26 @@ label {
   }
 
   .login-page {
-    padding-top: 82px;
+    padding: 16px;
   }
 
   .login-install-button {
     top: 16px;
     right: 16px;
+  }
+
+  .login-card {
+    padding: 20px;
+    max-height: calc(100dvh - 32px);
+  }
+
+  .login-logo {
+    width: min(160px, 52vw);
+    height: min(160px, 52vw);
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
   }
 
   .brand.large {
