@@ -14,8 +14,26 @@ import { sumMeals } from "../lib/calculations.js";
 
 const AppContext = createContext(null);
 
+const demoAccounts = [
+  {
+    id: "demo-coach",
+    role: "coach",
+    name: "Coach Divine",
+    email: "coach@sunwarriorfitness.com",
+    password: "SunWarrior2026!"
+  },
+  {
+    id: "demo-client",
+    role: "client",
+    name: "Marcus Reed",
+    email: "client@sunwarriorfitness.com",
+    password: "SunWarrior2026!"
+  }
+];
+
 export function AppProvider({ children }) {
   const [user, setUser] = useLocalStorage("sun-warrior:user", null);
+  const [accounts, setAccounts] = useLocalStorage("sun-warrior:accounts", demoAccounts);
   const [clients, setClients] = useLocalStorage("sun-warrior:clients", clientsSeed);
   const [meals, setMeals] = useLocalStorage("sun-warrior:meals", mealsSeed);
   const [workouts, setWorkouts] = useLocalStorage("sun-warrior:workouts", workoutsSeed);
@@ -48,21 +66,80 @@ export function AppProvider({ children }) {
 
   const activeTotals = useMemo(() => sumMeals(activeClientMeals), [activeClientMeals]);
 
-  function login(role) {
+  function login(role, email, password) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const expectedAccount = accounts.find(
+      (account) => account.role === role && account.email.toLowerCase() === normalizedEmail
+    );
+
+    if (!expectedAccount) {
+      throw new Error("We could not find an account for that email.");
+    }
+
+    if (password !== expectedAccount.password) {
+      throw new Error("The email or password you entered is incorrect.");
+    }
+
     if (role === "coach") {
       setUser({
-        id: "coach-1",
-        name: "Coach Divine",
-        email: "coach@example.com",
+        id: expectedAccount.id,
+        name: expectedAccount.name,
+        email: expectedAccount.email,
         role: "coach"
       });
       return;
     }
 
     setUser({
-      id: "client-user-1",
-      name: "Marcus Reed",
-      email: "marcus@example.com",
+      id: expectedAccount.id,
+      name: expectedAccount.name,
+      email: expectedAccount.email,
+      role: "client",
+      clientId: "client-1"
+    });
+    setActiveClientId("client-1");
+  }
+
+  function createAccount(role, email, password, name) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      throw new Error("Please enter your name.");
+    }
+
+    if (!normalizedEmail || password.length < 6) {
+      throw new Error("Please enter a valid email and a password with at least 6 characters.");
+    }
+
+    if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) {
+      throw new Error("An account with that email already exists.");
+    }
+
+    const newAccount = {
+      id: crypto.randomUUID(),
+      role,
+      name: trimmedName,
+      email: normalizedEmail,
+      password
+    };
+
+    setAccounts((current) => [...current, newAccount]);
+
+    if (role === "coach") {
+      setUser({
+        id: newAccount.id,
+        name: newAccount.name,
+        email: newAccount.email,
+        role: "coach"
+      });
+      return;
+    }
+
+    setUser({
+      id: newAccount.id,
+      name: newAccount.name,
+      email: newAccount.email,
       role: "client",
       clientId: "client-1"
     });
@@ -168,6 +245,7 @@ export function AppProvider({ children }) {
   const value = {
     user,
     login,
+    createAccount,
     logout,
     clients,
     activeClient,

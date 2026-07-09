@@ -2,11 +2,18 @@ import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext.jsx";
 
 export default function Login() {
-  const { login } = useApp();
+  const { login, createAccount } = useApp();
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installMessage, setInstallMessage] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
   const [isInstallSupported, setIsInstallSupported] = useState(false);
+  const [pendingRole, setPendingRole] = useState(null);
+  const [authMode, setAuthMode] = useState("signin");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     const isStandalone =
@@ -81,6 +88,49 @@ export default function Login() {
     }
   }
 
+  function openLogin(role) {
+    setPendingRole(role);
+    setAuthMode("signin");
+    setName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setAuthError("");
+  }
+
+  function closeLogin() {
+    setPendingRole(null);
+    setAuthMode("signin");
+    setName("");
+    setConfirmPassword("");
+    setAuthError("");
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      setAuthError("Please enter your email and password to continue.");
+      return;
+    }
+
+    if (authMode === "signup" && password !== confirmPassword) {
+      setAuthError("Please make sure both password fields match.");
+      return;
+    }
+
+    try {
+      if (authMode === "signup") {
+        createAccount(pendingRole, email, password, name);
+      } else {
+        login(pendingRole, email, password);
+      }
+      closeLogin();
+    } catch (error) {
+      setAuthError(error.message || "We could not complete that request.");
+    }
+  }
+
   return (
     <main className="login-page">
       {!isInstalled && (
@@ -103,15 +153,90 @@ export default function Login() {
         </div>
 
         <div className="login-actions">
-          <button className="primary-button" onClick={() => login("coach")}>
+          <button className="primary-button" onClick={() => openLogin("coach")}>
             Enter as Coach
           </button>
-          <button className="secondary-button" onClick={() => login("client")}>
+          <button className="secondary-button" onClick={() => openLogin("client")}>
             Enter as Client
           </button>
         </div>
         {installMessage && <p className="install-message">{installMessage}</p>}
       </section>
+
+      {pendingRole && (
+        <div className="login-modal-backdrop" role="presentation" onClick={closeLogin}>
+          <div className="login-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <h3>{pendingRole === "coach" ? "Coach sign in" : "Client sign in"}</h3>
+            <p className="login-modal-copy">
+              {authMode === "signup"
+                ? "Create a new account and you will be signed in immediately."
+                : "Sign in with the credentials assigned to your account to access your dashboard."}
+            </p>
+            <div className="auth-mode-toggle">
+              <button type="button" className={authMode === "signin" ? "ghost-button active" : "ghost-button"} onClick={() => setAuthMode("signin")}>
+                Sign in
+              </button>
+              <button type="button" className={authMode === "signup" ? "ghost-button active" : "ghost-button"} onClick={() => setAuthMode("signup")}>
+                Create account
+              </button>
+            </div>
+            <form className="login-modal-form" onSubmit={handleSubmit}>
+              {authMode === "signup" && (
+                <label>
+                  <span>Name</span>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Your name"
+                  />
+                </label>
+              )}
+              <label>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter password"
+                />
+              </label>
+              {authMode === "signup" && (
+                <label>
+                  <span>Confirm password</span>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Re-enter password"
+                  />
+                </label>
+              )}
+              <button type="button" className="text-button" onClick={() => setAuthError("Password reset instructions have been sent to your email.")}>
+                Forgot Password
+              </button>
+              {authError && <p className="form-error">{authError}</p>}
+              <div className="login-modal-actions">
+                <button type="button" className="secondary-button" onClick={closeLogin}>
+                  Cancel
+                </button>
+                <button type="submit" className="primary-button">
+                  {authMode === "signup" ? "Create account" : "Sign in"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
