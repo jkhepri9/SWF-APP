@@ -1,23 +1,29 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext.jsx";
+import { supabase } from "../lib/supabaseClient.js";
 
 export default function Login() {
-  const { login, createAccount } = useApp();
+  const { refreshUser, authNotice } = useApp();
+
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installMessage, setInstallMessage] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
   const [isInstallSupported, setIsInstallSupported] = useState(false);
-  const [pendingRole, setPendingRole] = useState(null);
-  const [authMode, setAuthMode] = useState("signin");
-  const [name, setName] = useState("");
+
+  const [mode, setMode] = useState("login");
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState("client");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   useEffect(() => {
     const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone;
 
     setIsInstalled(Boolean(isStandalone));
 
@@ -43,7 +49,13 @@ export default function Login() {
       setInstallMessage("");
     }
 
-    setIsInstallSupported(Boolean(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone || window.deferredPrompt));
+    setIsInstallSupported(
+      Boolean(
+        window.matchMedia("(display-mode: standalone)").matches ||
+          window.navigator.standalone ||
+          window.deferredPrompt
+      )
+    );
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
@@ -65,7 +77,10 @@ export default function Login() {
     if (!installPrompt) {
       if (window.navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
         setInstallMessage("On iPhone or iPad, use Share > Add to Home Screen to install this app.");
-      } else if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) {
+      } else if (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone
+      ) {
         setInstallMessage("Sun Warrior Fitness is already installed.");
       } else {
         setInstallMessage("Your browser is not offering an install prompt right now. Try using the browser menu to install this app.");
@@ -88,46 +103,76 @@ export default function Login() {
     }
   }
 
-  function openLogin(role) {
-    setPendingRole(role);
-    setAuthMode("signin");
-    setName("");
-    setEmail("");
-    setPassword("");
-    setConfirmPassword("");
-    setAuthError("");
+  async function upsertProfile(authUser, selectedRole) {
+    const safeRole = selectedRole === "coach" ? "coach" : "client";
+
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        id: authUser.id,
+        email: authUser.email,
+        full_name: fullName.trim() || authUser.email?.split("@")[0] || "Sun Warrior",
+        role: safeRole,
+        client_id: safeRole === "client" ? "client-1" : null
+      },
+      { onConflict: "id" }
+    );
+
+    if (error) {
+      console.warn("Profile save failed. Auth user still exists.", error);
+    }
   }
 
-  function closeLogin() {
-    setPendingRole(null);
-    setAuthMode("signin");
-    setName("");
-    setConfirmPassword("");
-    setAuthError("");
-  }
-
-  function handleSubmit(event) {
+  async function handleAuth(event) {
     event.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
-      setAuthError("Please enter your email and password to continue.");
-      return;
-    }
-
-    if (authMode === "signup" && password !== confirmPassword) {
-      setAuthError("Please make sure both password fields match.");
-      return;
-    }
+    setIsAuthenticating(true);
+    setAuthError("");
+    setAuthMessage("");
 
     try {
-      if (authMode === "signup") {
-        createAccount(pendingRole, email, password, name);
-      } else {
-        login(pendingRole, email, password);
+      if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              full_name: fullName.trim(),
+              role
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        if (data?.session && data?.user) {
+          await upsertProfile(data.user, role);
+          setAuthMessage("Account created. Loading your dashboard...");
+          await refreshUser(role);
+          return;
+        }
+
+        setAuthMessage("Account created. Check your email to confirm your account, then come back and log in.");
+        return;
       }
-      closeLogin();
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
+      });
+
+      if (error) throw error;
+
+      if (!data?.user) {
+        throw new Error("Login succeeded, but no user session was returned.");
+      }
+
+      setAuthMessage("Logged in. Loading your dashboard...");
+      await refreshUser("client");
     } catch (error) {
-      setAuthError(error.message || "We could not complete that request.");
+      console.error("Auth failed", error);
+      setAuthError(error?.message || "Unable to sign in right now. Please try again.");
+    } finally {
+      setIsAuthenticating(false);
     }
   }
 
@@ -138,9 +183,14 @@ export default function Login() {
           {isInstallSupported ? "Install App" : "Install App"}
         </button>
       )}
+
       <section className="login-card">
         <div className="brand large">
-          <img className="brand-mark login-logo" src="/sun-warrior-logo.png" alt="Sun Warrior Fitness logo" />
+          <img
+            className="brand-mark login-logo"
+            src="/sun-warrior-logo.png"
+            alt="Sun Warrior Fitness logo"
+          />
         </div>
 
         <div className="hero-copy">
@@ -152,91 +202,82 @@ export default function Login() {
           </p>
         </div>
 
-        <div className="login-actions">
-          <button className="primary-button" onClick={() => openLogin("coach")}>
-            Enter as Coach
+        <form className="auth-form" onSubmit={handleAuth}>
+          {mode === "signup" && (
+            <>
+              <label>
+                Full name
+                <input
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Your name"
+                  required
+                />
+              </label>
+
+              <label>
+                Account type
+                <select value={role} onChange={(event) => setRole(event.target.value)}>
+                  <option value="client">Client</option>
+                  <option value="coach">Coach</option>
+                </select>
+              </label>
+            </>
+          )}
+
+          <label>
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@email.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Minimum 6 characters"
+              minLength={6}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              required
+            />
+          </label>
+
+          <button className="primary-button" type="submit" disabled={isAuthenticating}>
+            {isAuthenticating
+              ? "Working..."
+              : mode === "signup"
+                ? "Create Account"
+                : "Log In"}
           </button>
-          <button className="secondary-button" onClick={() => openLogin("client")}>
-            Enter as Client
-          </button>
-        </div>
+        </form>
+
+        <button
+          className="ghost-button auth-toggle-button"
+          type="button"
+          onClick={() => {
+            setAuthError("");
+            setAuthMessage("");
+            setMode(mode === "login" ? "signup" : "login");
+          }}
+        >
+          {mode === "login"
+            ? "Need an account? Create one"
+            : "Already have an account? Log in"}
+        </button>
+
+        {authError && <p className="install-message">{authError}</p>}
+        {authMessage && <p className="install-message">{authMessage}</p>}
+        {authNotice && <p className="install-message">{authNotice}</p>}
         {installMessage && <p className="install-message">{installMessage}</p>}
       </section>
-
-      {pendingRole && (
-        <div className="login-modal-backdrop" role="presentation" onClick={closeLogin}>
-          <div className="login-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <h3>{pendingRole === "coach" ? "Coach sign in" : "Client sign in"}</h3>
-            <p className="login-modal-copy">
-              {authMode === "signup"
-                ? "Create a new account and you will be signed in immediately."
-                : "Sign in with the credentials assigned to your account to access your dashboard."}
-            </p>
-            <div className="auth-mode-toggle">
-              <button type="button" className={authMode === "signin" ? "ghost-button active" : "ghost-button"} onClick={() => setAuthMode("signin")}>
-                Sign in
-              </button>
-              <button type="button" className={authMode === "signup" ? "ghost-button active" : "ghost-button"} onClick={() => setAuthMode("signup")}>
-                Create account
-              </button>
-            </div>
-            <form className="login-modal-form" onSubmit={handleSubmit}>
-              {authMode === "signup" && (
-                <label>
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Your name"
-                  />
-                </label>
-              )}
-              <label>
-                <span>Email</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                />
-              </label>
-              <label>
-                <span>Password</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter password"
-                />
-              </label>
-              {authMode === "signup" && (
-                <label>
-                  <span>Confirm password</span>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Re-enter password"
-                  />
-                </label>
-              )}
-              <button type="button" className="text-button" onClick={() => setAuthError("Password reset instructions have been sent to your email.")}>
-                Forgot Password
-              </button>
-              {authError && <p className="form-error">{authError}</p>}
-              <div className="login-modal-actions">
-                <button type="button" className="secondary-button" onClick={closeLogin}>
-                  Cancel
-                </button>
-                <button type="submit" className="primary-button">
-                  {authMode === "signup" ? "Create account" : "Sign in"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

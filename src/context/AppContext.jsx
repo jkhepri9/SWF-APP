@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage.js";
 import {
   checkInsSeed,
@@ -11,29 +11,43 @@ import {
   workoutsSeed
 } from "../data/mockData.js";
 import { sumMeals } from "../lib/calculations.js";
+import { supabase } from "../lib/supabaseClient.js";
 
 const AppContext = createContext(null);
+const DEFAULT_CLIENT_ID = "client-1";
 
-const demoAccounts = [
-  {
-    id: "demo-coach",
-    role: "coach",
-    name: "Coach Divine",
-    email: "coach@sunwarriorfitness.com",
-    password: "SunWarrior2026!"
-  },
-  {
-    id: "demo-client",
-    role: "client",
-    name: "Marcus Reed",
-    email: "client@sunwarriorfitness.com",
-    password: "SunWarrior2026!"
-  }
-];
+function cleanRole(role) {
+  return role === "coach" ? "coach" : "client";
+}
+
+function getNameFromEmail(email) {
+  return email?.split("@")[0]?.replace(/[._-]+/g, " ") || "Sun Warrior";
+}
+
+function buildAppUser(authUser, profile = null, fallbackRole = "client") {
+  const metadata = authUser?.user_metadata || {};
+  const role = cleanRole(profile?.role || metadata.role || fallbackRole);
+  const fullName =
+    profile?.full_name ||
+    metadata.full_name ||
+    metadata.display_name ||
+    getNameFromEmail(authUser?.email);
+
+  return {
+    id: authUser.id,
+    supabaseUserId: authUser.id,
+    name: fullName,
+    email: authUser.email || profile?.email || "",
+    role,
+    clientId: role === "client" ? profile?.client_id || DEFAULT_CLIENT_ID : undefined
+  };
+}
 
 export function AppProvider({ children }) {
-  const [user, setUser] = useLocalStorage("sun-warrior:user", null);
-  const [accounts, setAccounts] = useLocalStorage("sun-warrior:accounts", demoAccounts);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authNotice, setAuthNotice] = useState("");
+
   const [clients, setClients] = useLocalStorage("sun-warrior:clients", clientsSeed);
   const [meals, setMeals] = useLocalStorage("sun-warrior:meals", mealsSeed);
   const [workouts, setWorkouts] = useLocalStorage("sun-warrior:workouts", workoutsSeed);
@@ -41,11 +55,137 @@ export function AppProvider({ children }) {
   const [habits, setHabits] = useLocalStorage("sun-warrior:habits", habitsSeed);
   const [checkIns, setCheckIns] = useLocalStorage("sun-warrior:checkins", checkInsSeed);
   const [plans, setPlans] = useLocalStorage("sun-warrior:plans", plansSeed);
-  const [activeClientId, setActiveClientId] = useLocalStorage("sun-warrior:activeClientId", "client-1");
+  const [activeClientId, setActiveClientId] = useLocalStorage("sun-warrior:activeClientId", DEFAULT_CLIENT_ID);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  async function getOrCreateProfile(authUser, fallbackRole = "client") {
+    if (!authUser?.id) return null;
+
+    const metadata = authUser.user_metadata || {};
+    const safeRole = cleanRole(metadata.role || fallbackRole);
+    const fallbackProfile = {
+      id: authUser.id,
+      email: authUser.email || "",
+      full_name: metadata.full_name || metadata.display_name || getNameFromEmail(authUser.email),
+      role: safeRole,
+      client_id: safeRole === "client" ? DEFAULT_CLIENT_ID : null
+    };
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, role, client_id")
+      .eq("id", authUser.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.warn("Profile lookup failed. Using Auth metadata instead.", profileError);
+      setAuthNotice(
+        "Your login is working, but the Supabase profiles table is not reachable yet. Run the provided production schema in Supabase."
+      );
+      return fallbackProfile;
+    }
+
+    if (profile) {
+      setAuthNotice("");
+      return profile;
+    }
+
+    const { data: createdProfile, error: upsertError } = await supabase
+      .from("profiles")
+      .upsert(fallbackProfile, { onConflict: "id" })
+      .select("id, email, full_name, role, client_id")
+      .single();
+
+    if (upsertError) {
+      console.warn("Profile creation failed. Using Auth metadata instead.", upsertError);
+      setAuthNotice(
+        "Your login is working, but your profile row could not be saved yet. Check Supabase RLS policies."
+      );
+      return fallbackProfile;
+    }
+
+    setAuthNotice("");
+    return createdProfile;
+  }
+
+  async function loadAuthenticatedUser(authUser, fallbackRole = "client") {
+    if (!authUser?.id) {
+      setUser(null);
+      return null;
+    }
+
+    const profile = await getOrCreateProfile(authUser, fallbackRole);
+    const appUser = buildAppUser(authUser, profile, fallbackRole);
+
+    setUser(appUser);
+
+    if (appUser.role === "client") {
+      setActiveClientId(appUser.clientId || DEFAULT_CLIENT_ID);
+    }
+
+    return appUser;
+  }
+
+  async function refreshUser(fallbackRole = "client") {
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error || !data?.user) {
+      setUser(null);
+      return null;
+    }
+
+    return loadAuthenticatedUser(data.user, fallbackRole);
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function hydrateSession() {
+      setAuthLoading(true);
+
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      if (error || !data?.session?.user) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      await loadAuthenticatedUser(data.session.user);
+
+      if (mounted) {
+        setAuthLoading(false);
+      }
+    }
+
+    hydrateSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+
+      if (!session?.user) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      await loadAuthenticatedUser(session.user);
+      if (mounted) setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
   const activeClient = useMemo(() => {
-    if (user?.role === "client") return clients.find((client) => client.id === user.clientId) || clients[0];
+    if (user?.role === "client") {
+      return clients.find((client) => client.id === user.clientId) || clients[0];
+    }
+
     return clients.find((client) => client.id === activeClientId) || clients[0];
   }, [activeClientId, clients, user]);
 
@@ -66,87 +206,8 @@ export function AppProvider({ children }) {
 
   const activeTotals = useMemo(() => sumMeals(activeClientMeals), [activeClientMeals]);
 
-  function login(role, email, password) {
-    const normalizedEmail = email.trim().toLowerCase();
-    const expectedAccount = accounts.find(
-      (account) => account.role === role && account.email.toLowerCase() === normalizedEmail
-    );
-
-    if (!expectedAccount) {
-      throw new Error("We could not find an account for that email.");
-    }
-
-    if (password !== expectedAccount.password) {
-      throw new Error("The email or password you entered is incorrect.");
-    }
-
-    if (role === "coach") {
-      setUser({
-        id: expectedAccount.id,
-        name: expectedAccount.name,
-        email: expectedAccount.email,
-        role: "coach"
-      });
-      return;
-    }
-
-    setUser({
-      id: expectedAccount.id,
-      name: expectedAccount.name,
-      email: expectedAccount.email,
-      role: "client",
-      clientId: "client-1"
-    });
-    setActiveClientId("client-1");
-  }
-
-  function createAccount(role, email, password, name) {
-    const normalizedEmail = email.trim().toLowerCase();
-    const trimmedName = name.trim();
-
-    if (!trimmedName) {
-      throw new Error("Please enter your name.");
-    }
-
-    if (!normalizedEmail || password.length < 6) {
-      throw new Error("Please enter a valid email and a password with at least 6 characters.");
-    }
-
-    if (accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) {
-      throw new Error("An account with that email already exists.");
-    }
-
-    const newAccount = {
-      id: crypto.randomUUID(),
-      role,
-      name: trimmedName,
-      email: normalizedEmail,
-      password
-    };
-
-    setAccounts((current) => [...current, newAccount]);
-
-    if (role === "coach") {
-      setUser({
-        id: newAccount.id,
-        name: newAccount.name,
-        email: newAccount.email,
-        role: "coach"
-      });
-      return;
-    }
-
-    setUser({
-      id: newAccount.id,
-      name: newAccount.name,
-      email: newAccount.email,
-      role: "client",
-      clientId: "client-1"
-    });
-    setActiveClientId("client-1");
-  }
-
-  function logout() {
+  async function logout() {
+    await supabase.auth.signOut();
     setUser(null);
   }
 
@@ -190,7 +251,7 @@ export function AppProvider({ children }) {
   }
 
   function sendMessage(body) {
-    if (!body.trim()) return;
+    if (!body.trim() || !user) return;
 
     setMessages((current) => [
       ...current,
@@ -244,8 +305,10 @@ export function AppProvider({ children }) {
 
   const value = {
     user,
-    login,
-    createAccount,
+    authLoading,
+    authNotice,
+    refreshUser,
+    loadAuthenticatedUser,
     logout,
     clients,
     activeClient,

@@ -18,7 +18,7 @@ export default function Dashboard({ setActivePage }) {
   } = useApp();
 
   const completedWorkout = activeClientWorkouts.some((workout) => workout.date === "Today" && workout.status === "Completed");
-  const clientCheckIn = checkIns.find((checkIn) => checkIn.clientId === activeClient.id);
+  const clientCheckIn = activeClient ? checkIns.find((checkIn) => checkIn.clientId === activeClient.id) : null;
 
   return (
     <div className="page-grid">
@@ -28,7 +28,7 @@ export default function Dashboard({ setActivePage }) {
           <h2>
             {user.role === "coach"
               ? `Today’s coaching command center`
-              : `Welcome back, ${activeClient.name.split(" ")[0]}`}
+              : `Welcome back, ${activeClient?.name?.split(" ")[0] || user.name?.split(" ")[0] || "there"}`}
           </h2>
           <p>
             Keep nutrition, training, check-ins, and messaging connected so the plan
@@ -44,14 +44,14 @@ export default function Dashboard({ setActivePage }) {
           </div>
         </div>
         <div className="hero-metrics">
-          <strong>{activeClient.adherence}%</strong>
+          <strong>{activeClient?.adherence || 0}%</strong>
           <span>7-day adherence</span>
         </div>
       </section>
 
       <div className="stats-grid">
-        <StatCard label="Calories" value={formatNumber(activeTotals.calories)} helper={`of ${activeClient.caloriesTarget}`} icon="◒" tone="green" />
-        <StatCard label="Protein" value={`${activeTotals.protein}g`} helper={`of ${activeClient.proteinTarget}g`} icon="△" tone="blue" />
+        <StatCard label="Calories" value={formatNumber(activeTotals.calories)} helper={`of ${activeClient?.caloriesTarget || 0}`} icon="◒" tone="green" />
+        <StatCard label="Protein" value={`${activeTotals.protein}g`} helper={`of ${activeClient?.proteinTarget || 0}g`} icon="△" tone="blue" />
         <StatCard label="Workout" value={completedWorkout ? "Done" : "Pending"} helper="today" icon="◆" tone="purple" />
         <StatCard label="Check-in" value={clientCheckIn ? clientCheckIn.date : "Missing"} helper="weekly" icon="✓" tone="orange" />
       </div>
@@ -67,10 +67,10 @@ export default function Dashboard({ setActivePage }) {
           <button className="ghost-button" onClick={() => setActivePage("nutrition")}>Open nutrition</button>
         </div>
         <div className="macro-stack">
-          <MacroBar label="Calories" value={activeTotals.calories} target={activeClient.caloriesTarget} unit="" />
-          <MacroBar label="Protein" value={activeTotals.protein} target={activeClient.proteinTarget} />
-          <MacroBar label="Carbs" value={activeTotals.carbs} target={activeClient.carbsTarget} />
-          <MacroBar label="Fat" value={activeTotals.fat} target={activeClient.fatTarget} />
+          <MacroBar label="Calories" value={activeTotals.calories} target={activeClient?.caloriesTarget || 0} unit="" />
+          <MacroBar label="Protein" value={activeTotals.protein} target={activeClient?.proteinTarget || 0} />
+          <MacroBar label="Carbs" value={activeTotals.carbs} target={activeClient?.carbsTarget || 0} />
+          <MacroBar label="Fat" value={activeTotals.fat} target={activeClient?.fatTarget || 0} />
         </div>
       </section>
 

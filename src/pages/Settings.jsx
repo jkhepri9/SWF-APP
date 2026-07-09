@@ -22,7 +22,7 @@ export default function Settings() {
         <div className="detail-grid">
           <div><span>Logged in as</span><strong>{user.name}</strong></div>
           <div><span>Role</span><strong>{user.role}</strong></div>
-          <div><span>Viewing client</span><strong>{activeClient.name}</strong></div>
+          <div><span>Viewing client</span><strong>{activeClient?.name || user.name}</strong></div>
           <div><span>Storage</span><strong>Browser localStorage</strong></div>
         </div>
       </section>
@@ -54,9 +54,9 @@ export default function Settings() {
           </div>
         </div>
         <p className="muted">
-          This clears all local demo changes and reloads the seeded app.
+          This clears the local app data and reloads the current session.
         </p>
-        <button className="danger-button" onClick={resetDemo}>Reset demo data</button>
+        <button className="danger-button" onClick={resetDemo}>Reset app data</button>
       </section>
     </div>
   );

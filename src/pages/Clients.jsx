@@ -32,7 +32,7 @@ export default function Clients({ setActivePage }) {
           <StatCard label="Active clients" value={clients.length} helper="current roster" icon="◎" tone="green" />
           <StatCard label="Need attention" value={needsAttention} helper="priority" icon="!" tone="orange" />
           <StatCard label="Avg adherence" value={`${avgAdherence}%`} helper="all clients" icon="✓" tone="blue" />
-          <StatCard label="Monthly revenue" value="$1,497" helper="demo" icon="$" tone="purple" />
+          <StatCard label="Coach" value={user.name || ""} helper="signed in" icon="◎" tone="purple" />
         </div>
       </section>
 
@@ -59,25 +59,25 @@ export default function Clients({ setActivePage }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Selected client</p>
-            <h3>{activeClient.name}</h3>
+            <h3>{activeClient?.name || "No client selected"}</h3>
           </div>
-          <span className="status-pill">{activeClient.status}</span>
+          <span className="status-pill">{activeClient?.status || ""}</span>
         </div>
 
         <div className="detail-grid">
-          <div><span>Email</span><strong>{activeClient.email}</strong></div>
-          <div><span>Goal</span><strong>{activeClient.goal}</strong></div>
-          <div><span>Weight</span><strong>{activeClient.weight} lb</strong></div>
-          <div><span>Calories</span><strong>{activeClient.caloriesTarget}</strong></div>
-          <div><span>Protein</span><strong>{activeClient.proteinTarget}g</strong></div>
-          <div><span>Last check-in</span><strong>{activeClient.lastCheckIn}</strong></div>
+          <div><span>Email</span><strong>{activeClient?.email || ""}</strong></div>
+          <div><span>Goal</span><strong>{activeClient?.goal || ""}</strong></div>
+          <div><span>Weight</span><strong>{activeClient?.weight ? `${activeClient.weight} lb` : "0 lb"}</strong></div>
+          <div><span>Calories</span><strong>{activeClient?.caloriesTarget || 0}</strong></div>
+          <div><span>Protein</span><strong>{activeClient?.proteinTarget ? `${activeClient.proteinTarget}g` : "0g"}</strong></div>
+          <div><span>Last check-in</span><strong>{activeClient?.lastCheckIn || ""}</strong></div>
         </div>
 
         <label className="note-box">
           Coach notes
           <textarea
-            value={activeClient.notes}
-            onChange={(event) => updateClient(activeClient.id, { notes: event.target.value })}
+            value={activeClient?.notes || ""}
+            onChange={(event) => updateClient(activeClient?.id, { notes: event.target.value })}
           />
         </label>
 
